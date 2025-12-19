@@ -6,22 +6,31 @@ import Dashboard from "./pages/Dashboard";
 import QuickUpdate from "./pages/QuickUpdate";
 import CSVUpdate from "./pages/CSVUpdate";
 
-function getHostFromUrl(): string | null {
-  // Shopify bazen host'u query'de, bazen hash içinde taşır
+function getParamsFromUrl() {
   const sp = new URLSearchParams(window.location.search || "");
+  const shopFromSearch = sp.get("shop");
   const hostFromSearch = sp.get("host");
 
   const hash = window.location.hash || "";
+  let shopFromHash: string | null = null;
   let hostFromHash: string | null = null;
 
   const qIndex = hash.indexOf("?");
   if (qIndex !== -1) {
     const hashQuery = hash.substring(qIndex + 1);
     const hashParams = new URLSearchParams(hashQuery);
+    shopFromHash = hashParams.get("shop");
     hostFromHash = hashParams.get("host");
   }
 
-  return hostFromSearch || hostFromHash;
+  return {
+    shop: shopFromSearch || shopFromHash,
+    host: hostFromSearch || hostFromHash,
+  };
+}
+
+function isEmbedded() {
+  return window.top !== window.self;
 }
 
 function AppRoutes() {
@@ -42,24 +51,47 @@ function AppRoutes() {
 }
 
 export default function App() {
-  const host = getHostFromUrl();
+  const { shop, host } = getParamsFromUrl();
+  const embedded = isEmbedded();
 
-  // App Bridge config:
-  // API key'i VITE_SHOPIFY_API_KEY olarak env'e koymanı öneririm.
-  // (Dashboard'da zaten kullanıyorsan aynı key olmalı)
-  const apiKey = (import.meta as any).env.VITE_SHOPIFY_API_KEY as string | undefined;
+  const apiKey = (import.meta as any).env.VITE_SHOPIFY_API_KEY as
+    | string
+    | undefined;
 
-  // Embedded değilse (host yoksa) provider yine de çalışabilir ama Shopify özellikleri kısıtlı olur.
-  // En azından crash etmesin diye guard koyuyoruz.
+  // API key yoksa App Bridge çalışmaz; yine de routes’u göster.
   if (!apiKey) {
     console.error("Missing VITE_SHOPIFY_API_KEY");
     return <AppRoutes />;
   }
 
-  // host embedded yüklemede zorunlu; yoksa da AppRoutes'u göster (install ekranı dışarıdan da açılabilir)
-  if (!host) {
+  /**
+   * Kritik stabilizasyon:
+   * Embedded içindeysek ama host yoksa, App Bridge INVALID_ORIGIN verir.
+   * Bu durumda Shopify Admin’e (top window) aynı rota ile geri yönlendiriyoruz;
+   * Shopify URL’ye host’u tekrar ekleyerek geri açar.
+   */
+  if (embedded && !host) {
+    // Loop engelle
+    const lockKey = "stockpilot_missing_host_reload_v1";
+    if (sessionStorage.getItem(lockKey) !== "1") {
+      sessionStorage.setItem(lockKey, "1");
+
+      // Shopify admin içinden açıldığı için, en güvenli yöntem:
+      // Top window'u mevcut URL'ye tekrar yönlendir.
+      // Shopify, embedded app URL’yi host ile tekrar kurar.
+      try {
+        window.top?.location?.replace(window.location.href);
+      } catch {
+        // Fallback
+        window.location.replace(window.location.href);
+      }
+    }
+
     return <AppRoutes />;
   }
+
+  // Embedded değilse veya host yoksa: Provider kurmadan devam (Install ekranı dışarıdan açılabilir)
+  if (!host) return <AppRoutes />;
 
   const appBridgeConfig = {
     apiKey,
