@@ -3,11 +3,11 @@ import { useTranslation } from "react-i18next";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { Redirect } from "@shopify/app-bridge/actions";
 
+// Basit stil objesi (Senin kodundan aynen alındı)
 const styles: any = {
   page: {
     minHeight: "100vh",
-    background:
-      "radial-gradient(circle at top, #0f172a 0, #020617 55%, #000 100%)",
+    background: "radial-gradient(circle at top, #0f172a 0, #020617 55%, #000 100%)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -23,80 +23,17 @@ const styles: any = {
     border: "1px solid rgba(148,163,184,0.45)",
     color: "#E2E8F0",
   },
-  headerRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 700,
-  },
-  langBtn: {
-    padding: "4px 10px",
-    borderRadius: 999,
-    border: "1px solid rgba(148,163,184,0.6)",
-    background: "transparent",
-    color: "#E2E8F0",
-    fontSize: 11,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-  },
-  description: {
-    fontSize: 13,
-    color: "#94A3B8",
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 12,
-    color: "#CBD5F5",
-    marginBottom: 4,
-    display: "block",
-  },
-  input: {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 999,
-    border: "1px solid #1E293B",
-    background: "#020617",
-    color: "#E2E8F0",
-    fontSize: 13,
-    outline: "none",
-  },
-  hint: {
-    marginTop: 6,
-    fontSize: 11,
-    color: "#64748B",
-  },
-  error: {
-    marginTop: 6,
-    fontSize: 11,
-    color: "#F97373",
-  },
-  button: {
-    marginTop: 16,
-    width: "100%",
-    padding: "10px 14px",
-    borderRadius: 999,
-    border: "none",
-    cursor: "pointer",
-    fontSize: 14,
-    fontWeight: 600,
-    background: "linear-gradient(135deg,#38BDF8,#6366F1,#EC4899)",
-    color: "#F9FAFB",
-    boxShadow: "0 12px 30px rgba(59,130,246,0.55)",
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-    cursor: "not-allowed",
-    boxShadow: "none",
-  },
-  footer: {
-    marginTop: 14,
-    fontSize: 11,
-    color: "#64748B",
-  },
+  headerRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  title: { fontSize: 20, fontWeight: 700 },
+  langBtn: { padding: "4px 10px", borderRadius: 999, border: "1px solid rgba(148,163,184,0.6)", background: "transparent", color: "#E2E8F0", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" },
+  description: { fontSize: 13, color: "#94A3B8", marginBottom: 16 },
+  label: { fontSize: 12, color: "#CBD5F5", marginBottom: 4, display: "block" },
+  input: { width: "100%", padding: "10px 12px", borderRadius: 999, border: "1px solid #1E293B", background: "#020617", color: "#E2E8F0", fontSize: 13, outline: "none" },
+  hint: { marginTop: 6, fontSize: 11, color: "#64748B" },
+  error: { marginTop: 6, fontSize: 11, color: "#F97373" },
+  button: { marginTop: 16, width: "100%", padding: "10px 14px", borderRadius: 999, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600, background: "linear-gradient(135deg,#38BDF8,#6366F1,#EC4899)", color: "#F9FAFB", boxShadow: "0 12px 30px rgba(59,130,246,0.55)" },
+  buttonDisabled: { opacity: 0.6, cursor: "not-allowed", boxShadow: "none" },
+  footer: { marginTop: 14, fontSize: 11, color: "#64748B" },
 };
 
 function getParamsFromUrl() {
@@ -126,45 +63,49 @@ const API_URL = (import.meta as any).env.VITE_API_URL as string | undefined;
 
 export default function Install() {
   const { t, i18n } = useTranslation();
-  const app = useAppBridge();
+  
+  // Güvenli App Bridge Kullanımı:
+  // Eğer Provider yoksa (dışarıdan erişim), useAppBridge hata verebilir.
+  // Bu yüzden try-catch mantığı veya window kontrolü ile ilerliyoruz.
+  let app: any = null;
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    app = useAppBridge(); 
+  } catch (e) {
+    // App Bridge context yoksa app null kalır
+  }
 
   const [shopInput, setShopInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Embedded (Shopify Admin iframe) içinden geldiysek:
-  // OAuth'u iframe içinde değil, TOP window'da başlat (REMOTE redirect).
+  // 1. OTOMATİK YÖNLENDİRME (Embedded ise)
   useEffect(() => {
     if (!API_URL) return;
 
+    // Sadece embedded (iframe) içindeysek ve app bridge yüklüyse
     const isEmbedded = window.top !== window.self;
-    if (!isEmbedded) return;
+    if (isEmbedded && app) {
+      const { shop, host } = getParamsFromUrl();
+      if (!shop) return;
 
-    const { shop, host } = getParamsFromUrl();
-    if (!shop) return;
+      const lockKey = "stockpilot_embed_autoredirect_v1";
+      if (sessionStorage.getItem(lockKey) === "1") return;
+      sessionStorage.setItem(lockKey, "1");
 
-    // Redirect loop'u önlemek için basit kilit
-    const lockKey = "stockpilot_embed_autoredirect_v1";
-    if (sessionStorage.getItem(lockKey) === "1") return;
-    sessionStorage.setItem(lockKey, "1");
+      const base = API_URL.replace(/\/+$/, "");
+      const target = `${base}/auth/install-redirect?shop=${encodeURIComponent(shop)}` +
+        (host ? `&host=${encodeURIComponent(host)}` : "");
 
-    const base = API_URL.replace(/\/+$/, "");
-    const target =
-      `${base}/auth/install-redirect?shop=${encodeURIComponent(shop)}` +
-      (host ? `&host=${encodeURIComponent(host)}` : "");
-
-    const redirect = Redirect.create(app);
-    redirect.dispatch(Redirect.Action.REMOTE, target);
+      // İŞTE ÇÖZÜM BURASI: REMOTE Redirect kullanıyoruz
+      const redirect = Redirect.create(app);
+      redirect.dispatch(Redirect.Action.REMOTE, target);
+    }
   }, [app]);
 
-  // URL'den ?shop parametresini bulup input'a yaz
   useEffect(() => {
-    try {
-      const { shop } = getParamsFromUrl();
-      if (shop) setShopInput(shop);
-    } catch {
-      // sessiz geç
-    }
+    const { shop } = getParamsFromUrl();
+    if (shop) setShopInput(shop);
   }, []);
 
   const currentLang = i18n.language === "tr" ? "TR" : "EN";
@@ -180,7 +121,6 @@ export default function Install() {
       return;
     }
 
-    // your-store veya your-store.myshopify.com ikisini de kabul et
     let normalized = raw.toLowerCase();
     if (!normalized.includes(".")) {
       normalized = `${normalized}.myshopify.com`;
@@ -194,17 +134,17 @@ export default function Install() {
     setLoading(true);
 
     const base = API_URL.replace(/\/+$/, "");
-    const url = `${base}/auth/install-redirect?shop=${encodeURIComponent(
-      normalized
-    )}`;
+    const url = `${base}/auth/install-redirect?shop=${encodeURIComponent(normalized)}`;
 
     const isEmbedded = window.top !== window.self;
 
-    // Embedded ise REMOTE redirect; değilse normal yönlendirme
-    if (isEmbedded) {
+    // 2. MANUEL BUTON YÖNLENDİRMESİ
+    if (isEmbedded && app) {
+      // Iframe içindeyiz -> App Bridge REMOTE Redirect
       const redirect = Redirect.create(app);
       redirect.dispatch(Redirect.Action.REMOTE, url);
     } else {
+      // Dışarıdayız -> Normal window location
       window.location.href = url;
     }
   };
@@ -217,9 +157,7 @@ export default function Install() {
           <button
             type="button"
             style={styles.langBtn}
-            onClick={() =>
-              i18n.changeLanguage(i18n.language === "tr" ? "en" : "tr")
-            }
+            onClick={() => i18n.changeLanguage(i18n.language === "tr" ? "en" : "tr")}
           >
             {currentLang} · {nextLang}
           </button>
@@ -227,9 +165,7 @@ export default function Install() {
 
         <div style={styles.description}>{t("install.description")}</div>
 
-        <label style={styles.label} htmlFor="shop-input">
-          {t("install.labelShop")}
-        </label>
+        <label style={styles.label} htmlFor="shop-input">{t("install.labelShop")}</label>
         <input
           id="shop-input"
           type="text"
@@ -245,10 +181,7 @@ export default function Install() {
 
         <button
           type="submit"
-          style={{
-            ...styles.button,
-            ...(loading ? styles.buttonDisabled : {}),
-          }}
+          style={{ ...styles.button, ...(loading ? styles.buttonDisabled : {}) }}
           disabled={loading}
         >
           {loading ? "Redirecting..." : t("install.button")}
