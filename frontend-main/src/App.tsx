@@ -1,67 +1,75 @@
-import { useEffect, useMemo, useState } from "react";
-import { Provider } from "@shopify/app-bridge-react";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
-import Install from "./pages/Install"; // Install sayfanın yolu
+import { HashRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { Provider as AppBridgeProvider } from "@shopify/app-bridge-react";
 
-// Eğer başka sayfaların varsa buraya import et
-// import Dashboard from "./pages/Dashboard";
+import Install from "./pages/Install";
+import Dashboard from "./pages/Dashboard";
+import QuickUpdate from "./pages/QuickUpdate";
+import CSVUpdate from "./pages/CSVUpdate";
 
-function App() {
-  // URL'den host ve shop parametrelerini alıyoruz
-  const [config, setConfig] = useState<{
-    host: string;
-    apiKey: string;
-    forceRedirect: boolean;
-  } | null>(null);
+function getHostFromUrl(): string | null {
+  // Shopify bazen host'u query'de, bazen hash içinde taşır
+  const sp = new URLSearchParams(window.location.search || "");
+  const hostFromSearch = sp.get("host");
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const host = params.get("host");
-    
-    // Shopify API Key'ini .env dosyasından alıyoruz
-    const apiKey = import.meta.env.VITE_SHOPIFY_API_KEY;
+  const hash = window.location.hash || "";
+  let hostFromHash: string | null = null;
 
-    if (host && apiKey) {
-      setConfig({
-        host,
-        apiKey,
-        forceRedirect: true, // Uygulamayı Shopify içinde tutmaya zorlar
-      });
-    }
-  }, []);
-
-  // Eğer host parametresi yoksa (uygulama direkt tarayıcıdan açıldıysa)
-  // Provider olmadan render ediyoruz.
-  if (!config) {
-    return (
-      <BrowserRouter>
-        <Routes>
-          <Route path="/install" element={<InstallWithoutProvider />} />
-          {/* Diğer route'lar buraya */}
-          <Route path="*" element={<InstallWithoutProvider />} /> 
-        </Routes>
-      </BrowserRouter>
-    );
+  const qIndex = hash.indexOf("?");
+  if (qIndex !== -1) {
+    const hashQuery = hash.substring(qIndex + 1);
+    const hashParams = new URLSearchParams(hashQuery);
+    hostFromHash = hashParams.get("host");
   }
 
-  // Host varsa App Bridge Provider ile sarmalıyoruz
+  return hostFromSearch || hostFromHash;
+}
+
+function AppRoutes() {
   return (
-    <Provider config={config}>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Install />} />
-          <Route path="/install" element={<Install />} />
-          {/* <Route path="/dashboard" element={<Dashboard />} /> */}
-        </Routes>
-      </BrowserRouter>
-    </Provider>
+    <Router>
+      <Routes>
+        <Route path="/" element={<Install />} />
+        <Route path="/install" element={<Install />} />
+
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/quick" element={<QuickUpdate />} />
+        <Route path="/csv" element={<CSVUpdate />} />
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Router>
   );
 }
 
-// App Bridge Context'i olmadan Install sayfasını render etmek için wrapper
-// Bu, useAppBridge hatasını önler (eğer dışarıdan açılırsa)
-function InstallWithoutProvider() {
-  return <Install />;
-}
+export default function App() {
+  const host = getHostFromUrl();
 
-export default App;
+  // App Bridge config:
+  // API key'i VITE_SHOPIFY_API_KEY olarak env'e koymanı öneririm.
+  // (Dashboard'da zaten kullanıyorsan aynı key olmalı)
+  const apiKey = (import.meta as any).env.VITE_SHOPIFY_API_KEY as string | undefined;
+
+  // Embedded değilse (host yoksa) provider yine de çalışabilir ama Shopify özellikleri kısıtlı olur.
+  // En azından crash etmesin diye guard koyuyoruz.
+  if (!apiKey) {
+    console.error("Missing VITE_SHOPIFY_API_KEY");
+    return <AppRoutes />;
+  }
+
+  // host embedded yüklemede zorunlu; yoksa da AppRoutes'u göster (install ekranı dışarıdan da açılabilir)
+  if (!host) {
+    return <AppRoutes />;
+  }
+
+  const appBridgeConfig = {
+    apiKey,
+    host,
+    forceRedirect: true,
+  };
+
+  return (
+    <AppBridgeProvider config={appBridgeConfig}>
+      <AppRoutes />
+    </AppBridgeProvider>
+  );
+}
