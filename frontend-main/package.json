@@ -1,0 +1,33 @@
+{
+  "name": "stockpilot-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "serve -s dist -l $PORT"
+  },
+  "dependencies": {
+    "@shopify/app-bridge": "3.7.11",
+    "@shopify/polaris": "^13.9.5",
+    "i18next": "^23.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-i18next": "^15.0.0",
+    "react-router-dom": "^6.26.2",
+    "serve": "^14.2.4",
+    "@shopify/app-bridge-react": "3.7.11"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.4",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.8"
+  },
+  "engines": {
+    "node": ">=20.10.0"
+  }
+}
