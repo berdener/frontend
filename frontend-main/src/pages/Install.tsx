@@ -1,5 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+
+// App Bridge opsiyonel: Provider yoksa hook hata fırlatabilir.
+// Bu yüzden Redirect'i sadece app varsa kullanacağız.
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { Redirect } from "@shopify/app-bridge/actions";
 
@@ -29,10 +32,7 @@ const styles: any = {
     alignItems: "center",
     marginBottom: 12,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: 700,
-  },
+  title: { fontSize: 20, fontWeight: 700 },
   langBtn: {
     padding: "4px 10px",
     borderRadius: 999,
@@ -43,11 +43,7 @@ const styles: any = {
     cursor: "pointer",
     whiteSpace: "nowrap",
   },
-  description: {
-    fontSize: 13,
-    color: "#94A3B8",
-    marginBottom: 16,
-  },
+  description: { fontSize: 13, color: "#94A3B8", marginBottom: 16 },
   label: {
     fontSize: 12,
     color: "#CBD5F5",
@@ -64,16 +60,8 @@ const styles: any = {
     fontSize: 13,
     outline: "none",
   },
-  hint: {
-    marginTop: 6,
-    fontSize: 11,
-    color: "#64748B",
-  },
-  error: {
-    marginTop: 6,
-    fontSize: 11,
-    color: "#F97373",
-  },
+  hint: { marginTop: 6, fontSize: 11, color: "#64748B" },
+  error: { marginTop: 6, fontSize: 11, color: "#F97373" },
   button: {
     marginTop: 16,
     width: "100%",
@@ -87,16 +75,8 @@ const styles: any = {
     color: "#F9FAFB",
     boxShadow: "0 12px 30px rgba(59,130,246,0.55)",
   },
-  buttonDisabled: {
-    opacity: 0.6,
-    cursor: "not-allowed",
-    boxShadow: "none",
-  },
-  footer: {
-    marginTop: 14,
-    fontSize: 11,
-    color: "#64748B",
-  },
+  buttonDisabled: { opacity: 0.6, cursor: "not-allowed", boxShadow: "none" },
+  footer: { marginTop: 14, fontSize: 11, color: "#64748B" },
 };
 
 function getParamsFromUrl() {
@@ -126,25 +106,45 @@ const API_URL = (import.meta as any).env.VITE_API_URL as string | undefined;
 
 export default function Install() {
   const { t, i18n } = useTranslation();
-  const app = useAppBridge();
+
+  // Hook bazı projelerde Provider yoksa crash edebilir.
+  // Bu yüzden try/catch ile güvenli hale getiriyoruz.
+  const app = useMemo(() => {
+    try {
+      return useAppBridge();
+    } catch {
+      return null as any;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [shopInput, setShopInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Embedded (Shopify Admin iframe) içinden geldiysek:
-  // OAuth'u iframe içinde değil, TOP window'da başlat (REMOTE redirect).
+  const isEmbedded = useMemo(() => window.top !== window.self, []);
+
+  const remoteRedirect = (url: string) => {
+    // AppBridge varsa: REMOTE (top-level) redirect
+    if (app) {
+      const redirect = Redirect.create(app);
+      redirect.dispatch(Redirect.Action.REMOTE, url);
+      return;
+    }
+    // AppBridge yoksa fallback: top window
+    // (Shopify Admin içinde çoğu zaman çalışır; en azından iframe içinde kalmaz)
+    window.top?.location?.assign(url);
+  };
+
+  // Embedded geldiysek otomatik olarak OAuth’a gönder (shop varsa)
   useEffect(() => {
     if (!API_URL) return;
-
-    const isEmbedded = window.top !== window.self;
     if (!isEmbedded) return;
 
     const { shop, host } = getParamsFromUrl();
     if (!shop) return;
 
-    // Redirect loop'u önlemek için basit kilit
-    const lockKey = "stockpilot_embed_autoredirect_v1";
+    const lockKey = "stockpilot_embed_autoredirect_v2";
     if (sessionStorage.getItem(lockKey) === "1") return;
     sessionStorage.setItem(lockKey, "1");
 
@@ -153,11 +153,11 @@ export default function Install() {
       `${base}/auth/install-redirect?shop=${encodeURIComponent(shop)}` +
       (host ? `&host=${encodeURIComponent(host)}` : "");
 
-    const redirect = Redirect.create(app);
-    redirect.dispatch(Redirect.Action.REMOTE, target);
-  }, [app]);
+    remoteRedirect(target);
+    // API_URL + isEmbedded değişirse tekrar değerlendir
+  }, [isEmbedded]);
 
-  // URL'den ?shop parametresini bulup input'a yaz
+  // URL'den shop varsa inputa bas
   useEffect(() => {
     try {
       const { shop } = getParamsFromUrl();
@@ -180,11 +180,8 @@ export default function Install() {
       return;
     }
 
-    // your-store veya your-store.myshopify.com ikisini de kabul et
     let normalized = raw.toLowerCase();
-    if (!normalized.includes(".")) {
-      normalized = `${normalized}.myshopify.com`;
-    }
+    if (!normalized.includes(".")) normalized = `${normalized}.myshopify.com`;
 
     if (!API_URL) {
       setError("API URL not configured.");
@@ -198,15 +195,8 @@ export default function Install() {
       normalized
     )}`;
 
-    const isEmbedded = window.top !== window.self;
-
-    // Embedded ise REMOTE redirect; değilse normal yönlendirme
-    if (isEmbedded) {
-      const redirect = Redirect.create(app);
-      redirect.dispatch(Redirect.Action.REMOTE, url);
-    } else {
-      window.location.href = url;
-    }
+    if (isEmbedded) remoteRedirect(url);
+    else window.location.assign(url);
   };
 
   return (
