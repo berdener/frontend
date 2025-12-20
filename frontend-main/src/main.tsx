@@ -1,3 +1,5 @@
+import { ensureShopHost } from "./lib/shopifyParams";
+ensureShopHost();
 import "@shopify/polaris/build/esm/styles.css";
 import React from "react";
 import ReactDOM from "react-dom/client";
