@@ -47,14 +47,15 @@ export function getAppBridge() {
   if (typeof window === "undefined") return null;
 
   const { shop, host } = getParamsFromUrl();
-  const isEmbedded = window.top !== window.self;
+ const isEmbedded = window.top !== window.self;
 
-  if (!isEmbedded) {
-    console.warn(
-      "[StockPilot] App Bridge devre dışı (Shopify admin içinde embed değil)."
-    );
-    return null;
-  }
+if (!isEmbedded) {
+  console.warn(
+    "[StockPilot] Embedded değil; App Bridge yine de başlatılacak ve forceRedirect ile Shopify Admin içine taşınacak."
+  );
+  // return yok
+}
+
 
   if (!shop || !host) {
     console.warn("[StockPilot] App Bridge devre dışı (shop/host yok).", {
