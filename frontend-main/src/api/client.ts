@@ -1,6 +1,5 @@
 // src/api/client.ts
-
-import { authorizedFetch } from "../utils/appBridge";
+import { authorizedFetch } from "../utils/appBridge"; // Bu dosyanın içeriğini aşağıda vereceğim
 
 const API =
   import.meta.env.VITE_API_URL ||
@@ -12,21 +11,27 @@ function buildUrl(pathname: string, shop: string) {
   return url;
 }
 
-export async function getProducts(shop: string) {
+// DİKKAT: İlk parametre olarak 'app' nesnesini ekledik
+export async function getProducts(app: any, shop: string) {
   const url = buildUrl("/api/products", shop);
   console.log("[StockPilot] getProducts ->", url.toString());
 
-  const res = await authorizedFetch(url.toString(), {
+  // 'app' nesnesini authorizedFetch'e gönderiyoruz
+  const res = await authorizedFetch(app, url.toString(), {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
     },
-    // CORS için cookie taşımıyoruz; session token Authorization header'da.
     credentials: "omit",
   });
 
   console.log("[StockPilot] /api/products status:", res.status);
+  
   if (!res.ok) {
+    // Backend 401 döndürürse burada yakalanır
+    if (res.status === 401) {
+       console.error("Yetki hatası: Session Token geçersiz veya eksik.");
+    }
     const text = await res.text().catch(() => "");
     console.error("[StockPilot] /api/products error body:", text);
     throw new Error("Failed to fetch products");
@@ -36,17 +41,15 @@ export async function getProducts(shop: string) {
 }
 
 export async function updateStock(
+  app: any, // Buraya da app eklendi
   shop: string,
   inventoryItemId: number,
   delta: number
 ) {
   const url = buildUrl("/api/stock/update", shop);
-  console.log("[StockPilot] updateStock ->", url.toString(), {
-    inventoryItemId,
-    delta,
-  });
+  console.log("[StockPilot] updateStock ->", url.toString());
 
-  const res = await authorizedFetch(url.toString(), {
+  const res = await authorizedFetch(app, url.toString(), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -55,11 +58,9 @@ export async function updateStock(
     body: JSON.stringify({ inventory_item_id: inventoryItemId, delta }),
   });
 
-  console.log("[StockPilot] /api/stock/update status:", res.status);
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    console.error("[StockPilot] /api/stock/update error body:", text);
-    throw new Error("Failed to update stock");
+    throw new Error("Failed to update stock: " + text);
   }
 
   return res.json();
