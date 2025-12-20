@@ -4,7 +4,8 @@ import {
   getSessionToken,
 } from "@shopify/app-bridge/utilities";
 
-import { ensureShopHost } from "./shopifyParams";
+import { ensureShopHost } from "../lib/shopifyParams";
+
 
 /**
  * URL hash içinde shop var ama host yoksa:
