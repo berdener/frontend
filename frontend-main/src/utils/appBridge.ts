@@ -10,10 +10,9 @@ import { ensureShopHost } from "../lib/shopifyParams";
  * bazen de hash router kullanan SPA'larda (#/route?... ) hash içinde taşır.
  */
 function getParamsFromUrl() {
-  // 1) Shopify parametrelerini garanti altına al (gerekirse host üretir)
+  // Storage’da shop/host’u garanti altına alır (host yoksa üretir)
   const { shop: shopFromStorage, host: hostFromStorage } = ensureShopHost();
 
-  // 2) Yine de URL’den gelen varsa (bazı senaryolarda) öncelik ver
   const searchParams = new URLSearchParams(window.location.search || "");
   const shopFromSearch = searchParams.get("shop");
   const hostFromSearch = searchParams.get("host");
