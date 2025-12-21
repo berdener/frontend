@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import { Redirect } from "@shopify/app-bridge/actions";
 import { getAppBridge } from "../utils/appBridge";
 
@@ -73,7 +74,6 @@ const styles: any = {
     boxShadow: "0 12px 30px rgba(59,130,246,0.55)",
   },
   buttonDisabled: { opacity: 0.6, cursor: "not-allowed", boxShadow: "none" },
-  footer: { marginTop: 14, fontSize: 11, color: "#64748B" },
 };
 
 function getParamsFromUrl() {
@@ -98,16 +98,22 @@ function getParamsFromUrl() {
   };
 }
 
-const API_URL = import.meta.env.VITE_API_URL as string | undefined;
+const DEFAULT_BACKEND = "https://stockpilot-production-529d.up.railway.app";
 
 export default function Install() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
 
   const [shopInput, setShopInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const isEmbedded = useMemo(() => window.top !== window.self, []);
+
+  const BACKEND_URL =
+    (import.meta.env.VITE_BACKEND_URL as string | undefined) ||
+    (import.meta.env.VITE_API_URL as string | undefined) ||
+    DEFAULT_BACKEND;
 
   const remoteRedirect = (url: string) => {
     const app = getAppBridge();
@@ -119,54 +125,39 @@ export default function Install() {
     window.top?.location?.assign(url);
   };
 
-  // Kuruluysa otomatik dashboard
+  // 1) URL'den shop/host al -> storage'a yaz
+  // 2) /api/installed kontrol et -> true ise dashboard'a git (SONSUZ DÖNGÜYÜ BİTİRİR)
   useEffect(() => {
-    const shop = sessionStorage.getItem("sp_shop");
-    if (!shop) return;
+    const { shop, host } = getParamsFromUrl();
 
-    fetch(`${import.meta.env.VITE_BACKEND_URL}/api/installed?shop=${shop}`)
+    if (shop) sessionStorage.setItem("sp_shop", shop);
+    if (host) sessionStorage.setItem("sp_host", host);
+
+    const effectiveShop = shop || sessionStorage.getItem("sp_shop");
+    if (!effectiveShop) return;
+
+    fetch(
+      `${BACKEND_URL.replace(/\/+$/, "")}/api/installed?shop=${encodeURIComponent(
+        effectiveShop
+      )}`
+    )
       .then((r) => r.json())
       .then((j) => {
-        if (j.installed) window.location.hash = "#/dashboard";
+        if (j?.installed) {
+          navigate("/dashboard", { replace: true });
+        }
       })
       .catch(() => {});
-  }, []);
+  }, [BACKEND_URL, navigate]);
 
-  // Embedded ise otomatik OAuth’a gönder
-  useEffect(() => {
-  if (!API_URL) return;
-
-  const { shop, host } = getParamsFromUrl();
-  if (!shop) return;
-
-  // shop + host storage'a yaz
-  sessionStorage.setItem("sp_shop", shop);
-  if (host) sessionStorage.setItem("sp_host", host);
-
-  fetch(`${import.meta.env.VITE_BACKEND_URL}/api/installed?shop=${encodeURIComponent(shop)}`)
-    .then(r => r.json())
-    .then(j => {
-      if (j.installed) {
-        // Kuruluysa DASHBOARD
-        window.location.hash = "#/dashboard";
-      } else {
-        // Kurulu değilse OAUTH
-        const base = API_URL.replace(/\/+$/, "");
-        const target =
-          `${base}/auth/install-redirect?shop=${encodeURIComponent(shop)}` +
-          (host ? `&host=${encodeURIComponent(host)}` : "");
-
-        remoteRedirect(target);
-      }
-    })
-    .catch(() => {});
-}, []);
-
-  // URL’den shop al
+  // URL'den shop varsa inputa yaz
   useEffect(() => {
     const { shop } = getParamsFromUrl();
     if (shop) setShopInput(shop);
   }, []);
+
+  const currentLang = i18n.language === "tr" ? "TR" : "EN";
+  const nextLang = i18n.language === "tr" ? "EN" : "TR";
 
   const handleSubmit: React.FormEventHandler = (e) => {
     e.preventDefault();
@@ -177,18 +168,12 @@ export default function Install() {
       setError(t("install.errors.noShop"));
       return;
     }
-    if (!normalized.includes(".")) {
-      normalized = `${normalized}.myshopify.com`;
-    }
-
-    if (!API_URL) {
-      setError("API URL not configured.");
-      return;
-    }
+    if (!normalized.includes(".")) normalized = `${normalized}.myshopify.com`;
 
     setLoading(true);
 
-    const base = API_URL.replace(/\/+$/, "");
+    // OAuth başlat (backend üzerinden)
+    const base = BACKEND_URL.replace(/\/+$/, "");
     const url = `${base}/auth/install-redirect?shop=${encodeURIComponent(
       normalized
     )}`;
@@ -196,9 +181,6 @@ export default function Install() {
     if (isEmbedded) remoteRedirect(url);
     else window.location.assign(url);
   };
-
-  const currentLang = i18n.language === "tr" ? "TR" : "EN";
-  const nextLang = i18n.language === "tr" ? "EN" : "TR";
 
   return (
     <div style={styles.page}>
@@ -216,15 +198,21 @@ export default function Install() {
           </button>
         </div>
 
-        <div style={styles.description}>{t("install.description")}</div>
+        <div style={{ fontSize: 13, color: "#94A3B8", marginBottom: 16 }}>
+          {t("install.description")}
+        </div>
 
-        <label style={styles.label}>{t("install.labelShop")}</label>
+        <label style={styles.label} htmlFor="shop-input">
+          {t("install.labelShop")}
+        </label>
         <input
+          id="shop-input"
           type="text"
           style={styles.input}
           placeholder={t("install.placeholderShop")}
           value={shopInput}
           onChange={(e) => setShopInput(e.target.value)}
+          autoComplete="off"
         />
 
         <div style={styles.hint}>{t("install.note")}</div>
