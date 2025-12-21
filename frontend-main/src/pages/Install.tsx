@@ -134,22 +134,33 @@ export default function Install() {
 
   // Embedded ise otomatik OAuth’a gönder
   useEffect(() => {
-    if (!API_URL || !isEmbedded) return;
+  if (!API_URL) return;
 
-    const { shop, host } = getParamsFromUrl();
-    if (!shop) return;
+  const { shop, host } = getParamsFromUrl();
+  if (!shop) return;
 
-    const lockKey = "stockpilot_embed_autoredirect_v3";
-    if (sessionStorage.getItem(lockKey) === "1") return;
-    sessionStorage.setItem(lockKey, "1");
+  // shop + host storage'a yaz
+  sessionStorage.setItem("sp_shop", shop);
+  if (host) sessionStorage.setItem("sp_host", host);
 
-    const base = API_URL.replace(/\/+$/, "");
-    const target =
-      `${base}/auth/install-redirect?shop=${encodeURIComponent(shop)}` +
-      (host ? `&host=${encodeURIComponent(host)}` : "");
+  fetch(`${import.meta.env.VITE_BACKEND_URL}/api/installed?shop=${encodeURIComponent(shop)}`)
+    .then(r => r.json())
+    .then(j => {
+      if (j.installed) {
+        // Kuruluysa DASHBOARD
+        window.location.hash = "#/dashboard";
+      } else {
+        // Kurulu değilse OAUTH
+        const base = API_URL.replace(/\/+$/, "");
+        const target =
+          `${base}/auth/install-redirect?shop=${encodeURIComponent(shop)}` +
+          (host ? `&host=${encodeURIComponent(host)}` : "");
 
-    remoteRedirect(target);
-  }, [isEmbedded]);
+        remoteRedirect(target);
+      }
+    })
+    .catch(() => {});
+}, []);
 
   // URL’den shop al
   useEffect(() => {
