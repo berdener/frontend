@@ -6,6 +6,18 @@ import { useTranslation } from "react-i18next";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { Redirect } from "@shopify/app-bridge/actions";
 
+useEffect(() => {
+  const shop = sessionStorage.getItem("sp_shop");
+  if (!shop) return;
+
+  fetch(`${import.meta.env.VITE_BACKEND_URL}/api/installed?shop=${shop}`)
+    .then(r => r.json())
+    .then(j => {
+      if (j.installed) window.location.hash = "#/dashboard";
+    });
+}, []);
+
+
 const styles: any = {
   page: {
     minHeight: "100vh",
