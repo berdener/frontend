@@ -1,22 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-
-// App Bridge opsiyonel: Provider yoksa hook hata fırlatabilir.
-// Bu yüzden Redirect'i sadece app varsa kullanacağız.
-import { useAppBridge } from "@shopify/app-bridge-react";
 import { Redirect } from "@shopify/app-bridge/actions";
-
-useEffect(() => {
-  const shop = sessionStorage.getItem("sp_shop");
-  if (!shop) return;
-
-  fetch(`${import.meta.env.VITE_BACKEND_URL}/api/installed?shop=${shop}`)
-    .then(r => r.json())
-    .then(j => {
-      if (j.installed) window.location.hash = "#/dashboard";
-    });
-}, []);
-
+import { getAppBridge } from "../utils/appBridge";
 
 const styles: any = {
   page: {
@@ -92,20 +77,19 @@ const styles: any = {
 };
 
 function getParamsFromUrl() {
-  const searchParams = new URLSearchParams(window.location.search || "");
-  const shopFromSearch = searchParams.get("shop");
-  const hostFromSearch = searchParams.get("host");
+  const sp = new URLSearchParams(window.location.search || "");
+  const shopFromSearch = sp.get("shop");
+  const hostFromSearch = sp.get("host");
 
   const hash = window.location.hash || "";
   let shopFromHash: string | null = null;
   let hostFromHash: string | null = null;
 
-  const qIndex = hash.indexOf("?");
-  if (qIndex !== -1) {
-    const hashQuery = hash.substring(qIndex + 1);
-    const hashParams = new URLSearchParams(hashQuery);
-    shopFromHash = hashParams.get("shop");
-    hostFromHash = hashParams.get("host");
+  const i = hash.indexOf("?");
+  if (i !== -1) {
+    const hp = new URLSearchParams(hash.substring(i + 1));
+    shopFromHash = hp.get("shop");
+    hostFromHash = hp.get("host");
   }
 
   return {
@@ -114,21 +98,10 @@ function getParamsFromUrl() {
   };
 }
 
-const API_URL = (import.meta as any).env.VITE_API_URL as string | undefined;
+const API_URL = import.meta.env.VITE_API_URL as string | undefined;
 
 export default function Install() {
   const { t, i18n } = useTranslation();
-
-  // Hook bazı projelerde Provider yoksa crash edebilir.
-  // Bu yüzden try/catch ile güvenli hale getiriyoruz.
-  const app = useMemo(() => {
-    try {
-      return useAppBridge();
-    } catch {
-      return null as any;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const [shopInput, setShopInput] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -137,26 +110,36 @@ export default function Install() {
   const isEmbedded = useMemo(() => window.top !== window.self, []);
 
   const remoteRedirect = (url: string) => {
-    // AppBridge varsa: REMOTE (top-level) redirect
+    const app = getAppBridge();
     if (app) {
       const redirect = Redirect.create(app);
       redirect.dispatch(Redirect.Action.REMOTE, url);
       return;
     }
-    // AppBridge yoksa fallback: top window
-    // (Shopify Admin içinde çoğu zaman çalışır; en azından iframe içinde kalmaz)
     window.top?.location?.assign(url);
   };
 
-  // Embedded geldiysek otomatik olarak OAuth’a gönder (shop varsa)
+  // Kuruluysa otomatik dashboard
   useEffect(() => {
-    if (!API_URL) return;
-    if (!isEmbedded) return;
+    const shop = sessionStorage.getItem("sp_shop");
+    if (!shop) return;
+
+    fetch(`${import.meta.env.VITE_BACKEND_URL}/api/installed?shop=${shop}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.installed) window.location.hash = "#/dashboard";
+      })
+      .catch(() => {});
+  }, []);
+
+  // Embedded ise otomatik OAuth’a gönder
+  useEffect(() => {
+    if (!API_URL || !isEmbedded) return;
 
     const { shop, host } = getParamsFromUrl();
     if (!shop) return;
 
-    const lockKey = "stockpilot_embed_autoredirect_v2";
+    const lockKey = "stockpilot_embed_autoredirect_v3";
     if (sessionStorage.getItem(lockKey) === "1") return;
     sessionStorage.setItem(lockKey, "1");
 
@@ -166,34 +149,26 @@ export default function Install() {
       (host ? `&host=${encodeURIComponent(host)}` : "");
 
     remoteRedirect(target);
-    // API_URL + isEmbedded değişirse tekrar değerlendir
   }, [isEmbedded]);
 
-  // URL'den shop varsa inputa bas
+  // URL’den shop al
   useEffect(() => {
-    try {
-      const { shop } = getParamsFromUrl();
-      if (shop) setShopInput(shop);
-    } catch {
-      // sessiz geç
-    }
+    const { shop } = getParamsFromUrl();
+    if (shop) setShopInput(shop);
   }, []);
-
-  const currentLang = i18n.language === "tr" ? "TR" : "EN";
-  const nextLang = i18n.language === "tr" ? "EN" : "TR";
 
   const handleSubmit: React.FormEventHandler = (e) => {
     e.preventDefault();
     setError(null);
 
-    const raw = shopInput.trim();
-    if (!raw) {
+    let normalized = shopInput.trim().toLowerCase();
+    if (!normalized) {
       setError(t("install.errors.noShop"));
       return;
     }
-
-    let normalized = raw.toLowerCase();
-    if (!normalized.includes(".")) normalized = `${normalized}.myshopify.com`;
+    if (!normalized.includes(".")) {
+      normalized = `${normalized}.myshopify.com`;
+    }
 
     if (!API_URL) {
       setError("API URL not configured.");
@@ -210,6 +185,9 @@ export default function Install() {
     if (isEmbedded) remoteRedirect(url);
     else window.location.assign(url);
   };
+
+  const currentLang = i18n.language === "tr" ? "TR" : "EN";
+  const nextLang = i18n.language === "tr" ? "EN" : "TR";
 
   return (
     <div style={styles.page}>
@@ -229,17 +207,13 @@ export default function Install() {
 
         <div style={styles.description}>{t("install.description")}</div>
 
-        <label style={styles.label} htmlFor="shop-input">
-          {t("install.labelShop")}
-        </label>
+        <label style={styles.label}>{t("install.labelShop")}</label>
         <input
-          id="shop-input"
           type="text"
           style={styles.input}
           placeholder={t("install.placeholderShop")}
           value={shopInput}
           onChange={(e) => setShopInput(e.target.value)}
-          autoComplete="off"
         />
 
         <div style={styles.hint}>{t("install.note")}</div>
@@ -255,8 +229,6 @@ export default function Install() {
         >
           {loading ? "Redirecting..." : t("install.button")}
         </button>
-
-        <div style={styles.footer}></div>
       </form>
     </div>
   );
